@@ -1,0 +1,37 @@
+# -----------------------------------------
+# Wilson-Cowan E-I Model
+# Bifurcation in Iext
+# -----------------------------------------
+
+init E=0.01 I=0.01
+
+par Iext=0.5 tauE=10 tauI=5
+par wEE=13 wEI=10 wIE=10 wII=0
+par aE=6 aI=4
+par thE=2.5 thI=2.0 
+
+# Sigmoids
+SE = 1/(1+exp(-aE*(wEE*E - wEI*I + Iext - thE)))
+SI = 1/(1+exp(-aI*(wIE*E - wII*I - thI)))
+
+# ODEs
+E' = (-E + SE)/tauE
+I' = (-I + SI)/tauI
+
+@ dt=0.05, total=300
+@ xplot=Iext, yplot=E, axes=2d
+@ xmin=0, xmax=2, ymin=0, ymax=1
+@ maxstor=20000
+@ runnow=1
+
+# AUTO settings
+@ autovar=Iext, autoxmin=0.5, autoxmax=5
+@ autoymin=0, autoymax=1.0
+@ ntst=40, nmax=400, npr=50
+@ ds=0.01, dsmin=0.0005, dsmax=0.1
+@ ncol=4
+@ epsl=1e-6, epsu=1e-6, epss=1e-5
+@ parmin=0, parmax=5
+@ normmin=0, normmax=1000
+
+done
