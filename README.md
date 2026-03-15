@@ -2,8 +2,8 @@
 
 ## 1. Brief Description
 
-**Emergent E-I Structure in Performance-Evolved Reservoir Networks of Neuronal Population Dynamics**  
-**Manish Yadav**  
+**"Emergent E-I Structure in Performance-Evolved Reservoir Networks of Neuronal Population Dynamics"**  
+**by Dr. Manish Yadav**  
 Chair of Cyber-Physical Systems in Mechanical Engineering, Technische Universitat Berlin, Strasse des 17. Juni 135, 10623 Berlin, Germany  
 Electronic mail: `manish.yadav@tu-berlin.de`  
 Dated: 13 March 2026
