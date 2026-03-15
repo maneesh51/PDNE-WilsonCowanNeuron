@@ -26,8 +26,6 @@ This repository is flat (single top-level directory, no nested source folders). 
 - `PDNE_Load_And_Predic.ipynb`: Postprocessing notebook to load saved runs/models, evaluate final networks, and analyze predictive/generalization behavior.
 - `WC_Neuron_Simul.ipynb`: Wilson-Cowan simulation notebook used to generate/inspect response dynamics and bifurcation-style analyses.
 - `WC_Neuron.ode`: ODE definition of the Wilson-Cowan E-I system (including parameters and continuation settings).
-- `LICENSE`: Repository license.
-- `README.md`: Project overview and usage notes.
 
 Data note:
 
