@@ -10,7 +10,7 @@ Dated: 13 March 2026
 
 ![PDNE-WilsonCowanNeuron Overview](fig1_git.png)
 
-Understanding how network structure gives rise to neuronal dynamics, and whether compact computational models can recover that structure from data alone, is a central challenge in computational neuroscience. This repository applies the performance-dependent network evolution (PDNE) framework to the Wilson-Cowan (WC) neuronal system, a canonical two-population model of excitatory-inhibitory (E-I) interaction underlying physiological rhythms.
+Understanding how network structure gives rise to neuronal dynamics, and whether compact computational models can recover that structure from data alone, is a central challenge in computational neuroscience. This repository applies the [performance-dependent network evolution (PDNE)](https://doi.org/10.1103/PhysRevE.111.014320) framework Yadav et al. PRE 2025 to the Wilson-Cowan (WC) neuronal system, a canonical two-population model of excitatory-inhibitory (E-I) interaction underlying physiological rhythms.
 
 Starting from a minimal random seed network, PDNE iteratively grows and prunes a reservoir computing (RC) network based only on prediction performance, yielding compact and task-optimized reservoir networks. The evolved networks accurately predict both excitatory `E(t)` and inhibitory `I(t)` population activities across unseen stimulus amplitudes and generalize in a zero-shot manner to novel stimulus configurations (pulse number, position, and amplitude) without retraining.
 
