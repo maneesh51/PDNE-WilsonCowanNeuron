@@ -53,7 +53,7 @@ def Reservoir(GNet, Init, Inps, Winps, N_I, N, alpha, g_scale, ResTrans):
     Nodes_res = GNet.shape[0]; 
     batch, Npts_U = Inps.shape[0], Inps.shape[2]
 
-    R = np.zeros([N, batch, Npts_U])
+    R = np.zeros([Nodes_res, batch, Npts_U])
     
     for b in range(batch):
         R[:,b,0] = Init[:]
@@ -77,7 +77,7 @@ def RandNetGenerator(K,n,eig_rho):
         for j in range(n):
             b = np.random.random()
             if (i != j) and (b < prob):
-                W[i, j] = np.random.random()
+                W[i, j] = np.random.uniform(-1, 1) #np.random.random()
 
     rad = max(abs(np.linalg.eigvals(W)))
     W_reservoirr = W*(eig_rho/rad)  
@@ -138,7 +138,7 @@ def RC_Train(G, Spectral_radius, alpha, g_scale, N_I, N_O, Winps, OutsNodes, Inp
 
 def Generate_Winps(N_I, N, InpsNodes):
     Winps = np.zeros((N_I, N))
-    Winps[0, InpsNodes[0]] = 0.8   
+    Winps[0, InpsNodes[0]] = 0.75 #0.5 #0.8   
     return Winps
 
 def RC(G, Spectral_radius, alpha, g_scale, N_I, N_O, InpsNodes, OutsNodes, Inps, Outs, Inps_test, Outs_test, Trans, RC_reps, beta, Return=0):
@@ -162,21 +162,21 @@ def RC(G, Spectral_radius, alpha, g_scale, N_I, N_O, InpsNodes, OutsNodes, Inps,
         W_outs_all.append(W_outs); Winps_all.append(Winps)
 
         ###2. Closed loop testing and predictions
-        Outs_predict[r], MSEs_train[r] = Test_or_Predict(GNet, Init, Inps, Winps, N, N_I, N_O, OutsNodes, alpha, g_scale, W_outs, Outs, Trans)
-        Outs_test_pred[r], MSEs_test_pred[r] = Test_or_Predict(GNet, Init, Inps_test, Winps, N, N_I, N_O, OutsNodes, alpha, g_scale, W_outs, Outs_test, Trans)
+        Outs_predict[r], MSEs_train[r], ResStates_3D_train = Test_or_Predict(GNet, Init, Inps, Winps, N, N_I, N_O, OutsNodes, alpha, g_scale, W_outs, Outs, Trans)
+        Outs_test_pred[r], MSEs_test_pred[r], ResStates_3D_test = Test_or_Predict(GNet, Init, Inps_test, Winps, N, N_I, N_O, OutsNodes, alpha, g_scale, W_outs, Outs_test, Trans)
         
     ##### Mean over RC and standard deviation over RC reps and batches for train and test predictions
     MSEs_MnSD_train = np.array([np.mean(MSEs_train, axis=(0,1)), np.std(MSEs_train, axis=(0,1))])
     MSEs_MnSD_test_pred = np.array([np.mean(MSEs_test_pred, axis=(0,1)), np.std(MSEs_test_pred, axis=(0,1))])
     
     if Return==0:
-        return MSEs_MnSD_train, MSEs_MnSD_test_pred
+        return MSEs_MnSD_train, MSEs_MnSD_test_pred, ResStates_3D_train, ResStates_3D_test, W_outs_all
     
     if Return==1:
         return Outs_predict, Outs_test_pred, MSEs_MnSD_train, MSEs_MnSD_test_pred
     
     if Return==2:
-        return Outs_predict, Outs_test_pred, MSEs_MnSD_train, MSEs_MnSD_test_pred, W_outs_all, Winps_all
+        return Outs_predict, Outs_test_pred, MSEs_MnSD_train, MSEs_MnSD_test_pred, W_outs_all, Winps_all, ResStates_3D_train, ResStates_3D_test
 
 
 ###Training#########################################################################################   
@@ -230,5 +230,5 @@ def Test_or_Predict(GNet, Init, Inps_t, Winps, N, N_I, N_O, OutsNodes, alpha, g_
     for j in range(batch):
         for i in range(N_O):
             NMSEs_t[j, i] = Errors(Outs_pred[j, i, Trans:], Outs_test[j, i, Trans:])[0]
-    return Outs_pred[:,:,Trans:], NMSEs_t
+    return Outs_pred[:,:,Trans:], NMSEs_t, R
             

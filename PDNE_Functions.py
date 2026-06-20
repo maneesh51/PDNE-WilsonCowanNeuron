@@ -91,7 +91,7 @@ def DeleteNode(G_old, alpha, g_scale_old, N_I, N_O, InpsNodes_old, OutsNodes_old
         ################################################################
         
         ### RC run####################################################################
-        MSEs_MnSD_train_temp, MSEs_MnSD_pred_temp = RC(G_temp, Spectral_radius, alpha, g_scale_temp, N_I, N_O, InpsNodes_temp, OutsNodes_temp,\
+        MSEs_MnSD_train_temp, MSEs_MnSD_pred_temp, ResStates_3D_train, ResStates_3D_pred, W_outs = RC(G_temp, Spectral_radius, alpha, g_scale_temp, N_I, N_O, InpsNodes_temp, OutsNodes_temp,\
                                                         Inps, Outs, Inps_test, Outs_test, Trans, RC_Reps, beta)
         
         ######## Rounding the errors for comparing till given nth digit
@@ -116,11 +116,13 @@ def DeleteNode(G_old, alpha, g_scale_old, N_I, N_O, InpsNodes_old, OutsNodes_old
             # print('Deletion Accepted.', 'Nodes:', G_old.number_of_nodes(), 'Links:', G_old.number_of_edges(), 'Inp Nodes:', InpsNodes_old\
             #       ,'Out Nodes:', OutsNodes_old, 'OldErr:', MSEs_Mn_pred_old,'TempErr:', MSEs_MnSD_pred_temp[0])
                         
+
         DeleteStep=DeleteStep+1
         if DeleteStep>=Max_DeleteSteps:
             Flag=1
                     
-    return G_old, g_scale_old, InpsNodes_old, OutsNodes_old, NetMeasrs, Scores_train, Scores_pred, Nodes_Deleted
+    return G_old, g_scale_old, InpsNodes_old, OutsNodes_old, NetMeasrs, Scores_train, Scores_pred, Nodes_Deleted, \
+        ResStates_3D_train, ResStates_3D_pred, W_outs
 
 # @jit(target_backend='cuda')   
 def AddNewNode(t, G_old, alpha, g_scale_old, N_I, N_O, MaxNewLinks, Psi, P_inp, P_out, InpsNodes_old, OutsNodes_old, InpNodeType, OutNodeType, Spectral_radius,\
@@ -143,7 +145,7 @@ def AddNewNode(t, G_old, alpha, g_scale_old, N_I, N_O, MaxNewLinks, Psi, P_inp, 
         N = G_temp.number_of_nodes()
 
         #### Add activation function scale g_scale for new node, drawn from given list
-        g_scale_new = np.random.uniform(0.01, 1.0)
+        g_scale_new = np.random.uniform(0, 1.0)
         g_scale_temp.append(g_scale_new)
         
         if (InpNodeType==0):
@@ -186,7 +188,7 @@ def AddNewNode(t, G_old, alpha, g_scale_old, N_I, N_O, MaxNewLinks, Psi, P_inp, 
                 G_temp.add_edge(np.random.choice(G_Nodes), NewNode, weight=Drawn_Weight)
 
         ### RC run
-        MSEs_MnSD_train_temp, MSEs_MnSD_pred_temp = RC(G_temp, Spectral_radius, alpha, g_scale_temp, N_I, N_O, InpsNodes_temp, OutsNodes_temp, \
+        MSEs_MnSD_train_temp, MSEs_MnSD_pred_temp, ResStates_3D_train, ResStates_3D_pred, W_outs = RC(G_temp, Spectral_radius, alpha, g_scale_temp, N_I, N_O, InpsNodes_temp, OutsNodes_temp, \
                                                        Inps, Outs, Inps_test, Outs_test, Trans, RC_Reps, beta)
         
         ######## Rounding the errors for comparing till given nth digit
@@ -215,7 +217,7 @@ def AddNewNode(t, G_old, alpha, g_scale_old, N_I, N_O, MaxNewLinks, Psi, P_inp, 
             # print(t, 'Addition Rejected.', 'Nodes:', G_old.number_of_nodes(), 'Links:', G_old.number_of_edges(), 'Inp Nodes:', InpsNodes_old,\
             #       'Out nodes:',OutsNodes_old, 'Old Err:',Old_Err_Precise, 'Temp Err:', Temp_Err_Precise)
     
-    return G_old, g_scale_old, InpsNodes_old, OutsNodes_old, t
+    return G_old, g_scale_old, InpsNodes_old, OutsNodes_old, t, ResStates_3D_train, ResStates_3D_pred, W_outs
 
 def remove_isolated_nodes(G, InpsNodes, OutsNodes, N_I, N_O):
     IsolateFlag=0
@@ -237,14 +239,14 @@ def remove_isolated_nodes(G, InpsNodes, OutsNodes, N_I, N_O):
 
 # @jit(target_backend='cuda')   
 def Checkpoint_V3(Net_Init, alpha, g_scale, MaxNewLinks, Psi, P_inp, P_out, N_I, N_O, InpsNodes, OutsNodes, Spectral_radius, T, Delta_Err, beta, PlotEvery, Inps, \
-                  Outs, Inps_test, Outs_test, Trans, RC_Reps, Err_precision, Max_AddSteps, NodesDel_Percent, Informed_Growth='Yes',\
+                  Outs, Inps_test, Outs_test, Trans, RC_Reps, Err_precision, Max_AddSteps, NodesDel_Percent, T_reservoir_state_save, SaveDataFlag='No', Informed_Growth='Yes',\
                   Delete_Nodes='Yes', InpNodeType=0, OutNodeType=0):
     
     ###preserve the weights of the initial network 
     G = nx.DiGraph(Net_Init)
             
     ### Init RC run
-    MSEs_MnSD_train, MSEs_MnSD_pred = RC(G, Spectral_radius, alpha, g_scale, N_I, N_O, InpsNodes, OutsNodes, Inps, Outs, Inps_test, \
+    MSEs_MnSD_train, MSEs_MnSD_pred, ResStates_3D_train, ResStates_3D_pred, W_outs = RC(G, Spectral_radius, alpha, g_scale, N_I, N_O, InpsNodes, OutsNodes, Inps, Outs, Inps_test, \
                                          Outs_test, Trans, RC_Reps, beta)
     print(0, 'Initial Net. Nodes:', G.number_of_nodes(), 'Links:', G.number_of_edges(), 'Err:', MSEs_MnSD_pred[0])
     ################ Initial Net., properties and performance################################################
@@ -253,10 +255,15 @@ def Checkpoint_V3(Net_Init, alpha, g_scale, MaxNewLinks, Psi, P_inp, P_out, N_I,
     AllGraphs.append(G)
     All_g_scales = []
     All_g_scales.append(g_scale)
-    AllInpsNodes=[]; AllOutsNodes=[]
+    AllInpsNodes=[]; AllOutsNodes=[];
     NetMsr_init, NetMsrs_Names = Network_Measures(G)
     NetMsrs = np.zeros((T+10, NetMsr_init.shape[0]))
     NetMsrs[0] = NetMsr_init
+
+    ###reservoir states returned by rc will have shape [N, batch, Npts_U]. We need to append them in a list if the checkpoint iteration is in the T_reservoir_state_save list.
+    ResStates_3D_train_list = []
+    ResStates_3D_pred_list = []
+    W_outs_list = []
     ##########################################################################################################
 
     ##### MSEs_MnSD_train.Shape[0]->2(mean and std), MSEs_MnSD_train.Shape[1]->N_O
@@ -265,7 +272,14 @@ def Checkpoint_V3(Net_Init, alpha, g_scale, MaxNewLinks, Psi, P_inp, P_out, N_I,
     Scores_pred = np.zeros((T+10, MSEs_MnSD_pred.shape[0], MSEs_MnSD_pred.shape[1]))+np.nan
     Scores_train[0] = MSEs_MnSD_train
     Scores_pred[0] = MSEs_MnSD_pred
-    
+
+    ###checking if t=0 is in the T_reservoir_state_save list, if yes then save the reservoir states as well.
+    if 0 in T_reservoir_state_save:
+        print('Checkpoint iteration 0 is in the T_reservoir_state_save list, saving the reservoir states for t=0.')
+        ResStates_3D_train_list = [ResStates_3D_train]
+        ResStates_3D_pred_list = [ResStates_3D_pred]
+        W_outs_list = [W_outs]
+
     # print(0, 'Nodes:', G.number_of_nodes(), 'Links:', G.number_of_edges(), ' Err:', NetMsrs[0, 8])
     #########################################################################################################
     ######While loop until desired error is reached or taking too long Time
@@ -275,7 +289,7 @@ def Checkpoint_V3(Net_Init, alpha, g_scale, MaxNewLinks, Psi, P_inp, P_out, N_I,
         ###### Delete Node#####################################################################################################
         if (Delete_Nodes=='Yes'):
             
-            G, g_scale, InpsNodes, OutsNodes, NetMsrs_AfterDelFun, Scores_train_AfterDelFun, Scores_pred_AfterDelFun, Nodes_deleted =\
+            G, g_scale, InpsNodes, OutsNodes, NetMsrs_AfterDelFun, Scores_train_AfterDelFun, Scores_pred_AfterDelFun, Nodes_deleted, ResStates_3D_train, ResStates_3D_pred, W_outs =\
             DeleteNode(G, alpha, g_scale, N_I, N_O, InpsNodes, OutsNodes, Spectral_radius, Inps, Outs, Inps_test, Outs_test,\
             Trans, RC_Reps, NetMsr_init, Scores_pred[t,0], Err_precision, NodesDel_Percent, beta)
             
@@ -287,6 +301,14 @@ def Checkpoint_V3(Net_Init, alpha, g_scale, MaxNewLinks, Psi, P_inp, P_out, N_I,
                 NetMsrs[t] = NetMsrs_AfterDelFun.T
                 Scores_train[t] = Scores_train_AfterDelFun
                 Scores_pred[t] = Scores_pred_AfterDelFun
+
+                ####since the evolutionary iteration increased there, check if the checkpoint iteration is in the T_reservoir_state_save list, if yes then save the reservoir states as well.
+                if t in T_reservoir_state_save:
+                    print('Checkpoint iteration', t, 'is in the T_reservoir_state_save list, saving the reservoir states after deletion function.')
+                    ResStates_3D_train_list.append(ResStates_3D_train)
+                    ResStates_3D_pred_list.append(ResStates_3D_pred)
+                    W_outs_list.append(W_outs)
+
 
             print(t, 'After Delete 1 Fun : Updated Net. Nodes:', G.number_of_nodes(), 'Links:', G.number_of_edges(),\
                   'Inp Nodes:',[len(InpsNodes[i]) for i in range(N_I)],'Out nodes:',[len(OutsNodes[i]) for i in range(N_O)],\
@@ -298,12 +320,12 @@ def Checkpoint_V3(Net_Init, alpha, g_scale, MaxNewLinks, Psi, P_inp, P_out, N_I,
         #####Add new node#########################################
         if (Informed_Growth=='Yes'):   
             
-            G, g_scale, InpsNodes, OutsNodes, t = AddNewNode(t, G, alpha, g_scale, N_I, N_O, MaxNewLinks, Psi, P_inp, P_out, InpsNodes, OutsNodes,\
+            G, g_scale, InpsNodes, OutsNodes, t, ResStates_3D_train, ResStates_3D_pred, W_outs = AddNewNode(t, G, alpha, g_scale, N_I, N_O, MaxNewLinks, Psi, P_inp, P_out, InpsNodes, OutsNodes,\
             InpNodeType, OutNodeType, Spectral_radius, Inps, Outs, Inps_test, Outs_test, Trans, RC_Reps, Scores_pred[t,0],\
             Err_precision, Max_AddSteps, beta)  # Err_precision BEFORE Max_AddSteps
 
         ####### Net. properties
-        MSEs_MnSD_train, MSEs_MnSD_pred = RC(G, Spectral_radius, alpha, g_scale, N_I, N_O, InpsNodes, OutsNodes, Inps, Outs, Inps_test, Outs_test,\
+        MSEs_MnSD_train, MSEs_MnSD_pred, ResStates_3D_train, ResStates_3D_pred, W_outs = RC(G, Spectral_radius, alpha, g_scale, N_I, N_O, InpsNodes, OutsNodes, Inps, Outs, Inps_test, Outs_test,\
                                              Trans, RC_Reps, beta)
         
         AllGraphs.append(G)
@@ -312,6 +334,13 @@ def Checkpoint_V3(Net_Init, alpha, g_scale, MaxNewLinks, Psi, P_inp, P_out, N_I,
         Scores_train[t] = MSEs_MnSD_train
         Scores_pred[t] = MSEs_MnSD_pred
         NetMsrs[t], NetMsrs_Names = Network_Measures(G)
+
+        ###check if the checkpoint iteration is in the T_reservoir_state_save list, if yes then save the reservoir states as well.
+        if t in T_reservoir_state_save:
+            print('Checkpoint iteration', t, 'is in the T_reservoir_state_save list, saving the reservoir states for this iteration.')
+            ResStates_3D_train_list.append(ResStates_3D_train)
+            ResStates_3D_pred_list.append(ResStates_3D_pred)
+            W_outs_list.append(W_outs)
         
         print(t, 'After Addition fun: Updated Net. Nodes:', G.number_of_nodes(), 'Links:', G.number_of_edges(),\
               'Inp Nodes:', [len(InpsNodes[i]) for i in range(N_I)],'Out nodes:',[len(OutsNodes[i]) for i in range(N_O)], 'g_scale:', len(g_scale),'Err:', Scores_pred[t,0])
@@ -320,7 +349,7 @@ def Checkpoint_V3(Net_Init, alpha, g_scale, MaxNewLinks, Psi, P_inp, P_out, N_I,
         ###### Delete Node Only during last step if condition is met####################################################################
         if ((Scores_pred[t,0,:] < Delta_Err).any() and Delete_Nodes=='Yes'):
         
-            G, g_scale, InpsNodes, OutsNodes, NetMsrs_AfterDelFun, Scores_train_AfterDelFun, Scores_pred_AfterDelFun, Nodes_deleted =\
+            G, g_scale, InpsNodes, OutsNodes, NetMsrs_AfterDelFun, Scores_train_AfterDelFun, Scores_pred_AfterDelFun, Nodes_deleted, ResStates_3D_train, ResStates_3D_pred, W_outs =\
             DeleteNode(G, alpha, g_scale, N_I, N_O, InpsNodes, OutsNodes, Spectral_radius, Inps, Outs, Inps_test, Outs_test,\
             Trans, RC_Reps, NetMsr_init, Scores_pred[t,0], Err_precision, NodesDel_Percent, beta)
 
@@ -331,7 +360,7 @@ def Checkpoint_V3(Net_Init, alpha, g_scale, MaxNewLinks, Psi, P_inp, P_out, N_I,
                 t=t+1
                 ###recalculate the network measures and scores
                 NetMsrs_AfterDelFun, NetMsrs_Names = Network_Measures(G)
-                Scores_train_AfterDelFun, Scores_pred_AfterDelFun = RC(G, Spectral_radius, alpha, g_scale, N_I, N_O, InpsNodes, OutsNodes, Inps, \
+                Scores_train_AfterDelFun, Scores_pred_AfterDelFun, ResStates_3D_train, ResStates_3D_pred, W_outs = RC(G, Spectral_radius, alpha, g_scale, N_I, N_O, InpsNodes, OutsNodes, Inps, \
                                                                        Outs, Inps_test, Outs_test, Trans, RC_Reps, beta) 
                 ####update the network and properties and scores
 
@@ -341,6 +370,12 @@ def Checkpoint_V3(Net_Init, alpha, g_scale, MaxNewLinks, Psi, P_inp, P_out, N_I,
                 NetMsrs[t] = NetMsrs_AfterDelFun.T
                 Scores_train[t] = Scores_train_AfterDelFun
                 Scores_pred[t] = Scores_pred_AfterDelFun
+
+                if t in T_reservoir_state_save:
+                    print('Checkpoint iteration', t, 'is in the T_reservoir_state_save list, saving the reservoir states after deletion function in the last step.')
+                    ResStates_3D_train_list.append(ResStates_3D_train)
+                    ResStates_3D_pred_list.append(ResStates_3D_pred)
+                    W_outs_list.append(W_outs)
 
             print(t, 'After Delete 2 Fun : Updated Net. Nodes:', G.number_of_nodes(), 'Links:', G.number_of_edges(),\
                   'Inp Nodes:',[len(InpsNodes[i]) for i in range(N_I)],'Out nodes:',[len(OutsNodes[i]) for i in range(N_O)],\
@@ -356,33 +391,39 @@ def Checkpoint_V3(Net_Init, alpha, g_scale, MaxNewLinks, Psi, P_inp, P_out, N_I,
         ##### Skip if t already reach ==T #######################
         if t>=T:  break
         ########################################################
-    return AllGraphs, All_g_scales, NetMsrs, NetMsrs_Names, Scores_train, Scores_pred, AllInpsNodes, AllOutsNodes
+    return AllGraphs, All_g_scales, NetMsrs, NetMsrs_Names, Scores_train, Scores_pred, AllInpsNodes, AllOutsNodes, ResStates_3D_train_list, ResStates_3D_pred_list, W_outs_list
 
 def write_gpickle_compat(data, file_path):
     with open(file_path, 'wb') as f:
         pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-def SaveData(SaveDir, TaskType, NetProps, InpProps, ModelRep, NetMsr, NetMsr_Names, Scores, AllGraphs, All_g_scales, AllInpsNodes, AllOutsNodes):
+def SaveData(SaveDir, TaskType, Na_init, NetProps, InpProps, ModelRep, NetMsr, NetMsr_Names, Scores, AllGraphs, All_g_scales, AllInpsNodes, AllOutsNodes):
     
     np.save(os.path.join(SaveDir,'NetMeasures_Names.npy'), NetMsr_Names)
     if TaskType=='WC_Neuron':
-        np.save(os.path.join(SaveDir,'{:}_NetMeasures_Rp{:d}.npy'.format(TaskType, ModelRep)), NetMsr) 
-        np.save(os.path.join(SaveDir,'{:}_Scores_Rp{:d}.npy'.format(TaskType, ModelRep)), Scores) 
+        np.save(os.path.join(SaveDir,'{:}_{:}_NetMeasures_Rp{:d}.npy'.format(TaskType, Na_init, ModelRep)), NetMsr) 
+        np.save(os.path.join(SaveDir,'{:}_{:}_Scores_Rp{:d}.npy'.format(TaskType, Na_init, ModelRep)), Scores) 
 
-        write_gpickle_compat(AllInpsNodes, os.path.join(SaveDir,'{:}_InpsNodes_Rp{:d}.gpickle'.format(TaskType, ModelRep)))
-        write_gpickle_compat(AllOutsNodes, os.path.join(SaveDir,'{:}_OutsNodes_Rp{:d}.gpickle'.format(TaskType, ModelRep)))
-        write_gpickle_compat(AllGraphs, os.path.join(SaveDir,'{:}_Graphs_Rp{:d}.gpickle'.format(TaskType, ModelRep)))
-        write_gpickle_compat(All_g_scales, os.path.join(SaveDir,'{:}_g_scales_Rp{:d}.gpickle'.format(TaskType, ModelRep)))
+        write_gpickle_compat(AllInpsNodes, os.path.join(SaveDir,'{:}_{:}_InpsNodes_Rp{:d}.gpickle'.format(TaskType, Na_init, ModelRep)))
+        write_gpickle_compat(AllOutsNodes, os.path.join(SaveDir,'{:}_{:}_OutsNodes_Rp{:d}.gpickle'.format(TaskType, Na_init, ModelRep)))        
+        write_gpickle_compat(AllGraphs, os.path.join(SaveDir,'{:}_{:}_Graphs_Rp{:d}.gpickle'.format(TaskType, Na_init, ModelRep)))
+        write_gpickle_compat(All_g_scales, os.path.join(SaveDir,'{:}_{:}_g_scales_Rp{:d}.gpickle'.format(TaskType, Na_init, ModelRep)))
 
 
-def save_final_model(G, g_scale, InpsNodes, OutsNodes, W_outs, Winps, Predictions, SaveDir, TaskType, ModelRep, Name='Final'):
-    write_gpickle_compat(G, os.path.join(SaveDir,'{:}_{:}_Graph_Rp{:d}.gpickle'.format(TaskType, Name, ModelRep)))
-    write_gpickle_compat(g_scale, os.path.join(SaveDir,'{:}_{:}_g_scale_Rp{:d}.gpickle'.format(TaskType, Name, ModelRep)))
-    write_gpickle_compat(InpsNodes, os.path.join(SaveDir,'{:}_{:}_InpsNodes_Rp{:d}.gpickle'.format(TaskType, Name, ModelRep)))
-    write_gpickle_compat(OutsNodes, os.path.join(SaveDir,'{:}_{:}_OutsNodes_Rp{:d}.gpickle'.format(TaskType, Name, ModelRep)))
-    write_gpickle_compat(W_outs, os.path.join(SaveDir,'{:}_{:}_W_outs_Rp{:d}.gpickle'.format(TaskType, Name, ModelRep)))
-    write_gpickle_compat(Winps, os.path.join(SaveDir,'{:}_{:}_Winps_Rp{:d}.gpickle'.format(TaskType, Name, ModelRep)))
-    write_gpickle_compat(Predictions, os.path.join(SaveDir,'{:}_{:}_Predictions_Rp{:d}.gpickle'.format(TaskType, Name, ModelRep)))
+def save_final_model(G, g_scale, InpsNodes, OutsNodes, W_outs, Winps, Predictions, SaveDir, TaskType, Na_init, ModelRep, Name='Final'):
+    write_gpickle_compat(G, os.path.join(SaveDir,'{:}_{:}_{:}_Graph_Rp{:d}.gpickle'.format(TaskType, Na_init, Name, ModelRep)))
+    write_gpickle_compat(g_scale, os.path.join(SaveDir,'{:}_{:}_{:}_g_scale_Rp{:d}.gpickle'.format(TaskType, Na_init, Name, ModelRep)))
+    write_gpickle_compat(InpsNodes, os.path.join(SaveDir,'{:}_{:}_{:}_InpsNodes_Rp{:d}.gpickle'.format(TaskType, Na_init, Name, ModelRep)))
+    write_gpickle_compat(OutsNodes, os.path.join(SaveDir,'{:}_{:}_{:}_OutsNodes_Rp{:d}.gpickle'.format(TaskType, Na_init, Name, ModelRep)))
+    write_gpickle_compat(W_outs, os.path.join(SaveDir,'{:}_{:}_{:}_W_outs_Rp{:d}.gpickle'.format(TaskType, Na_init, Name, ModelRep)))
+    write_gpickle_compat(Winps, os.path.join(SaveDir,'{:}_{:}_{:}_Winps_Rp{:d}.gpickle'.format(TaskType, Na_init, Name, ModelRep)))
+    write_gpickle_compat(Predictions, os.path.join(SaveDir,'{:}_{:}_{:}_Predictions_Rp{:d}.gpickle'.format(TaskType, Na_init, Name, ModelRep)))
+
+def save_res_states_gpickle(ResStates_4D_list, W_outs_list, T_reservoir_state_save, SaveDir, TaskType, Na_init, ModelRep, Name):
+    # ResStates_4D_dict = {t: ResStates_4D_list[i] for i, t in enumerate(T_reservoir_state_save)}
+    write_gpickle_compat(ResStates_4D_list, os.path.join(SaveDir,'{:}_{:}_{:}_ResStates_Rp{:d}.gpickle'.format(TaskType, Na_init, Name, ModelRep)))
+    write_gpickle_compat(W_outs_list, os.path.join(SaveDir,'{:}_{:}_{:}_W_outs_Rp{:d}.gpickle'.format(TaskType, Na_init, Name, ModelRep)))
+        
 
 def read_gpickle_compat(file_path):
     with open(file_path, 'rb') as f:
@@ -400,17 +441,17 @@ def ModelType(Informed_Growth, Delete_Nodes):
     return ModelTyp
     
 # @jit(target_backend='cuda')   
-def Run_Full_Model(Net_Init, alpha, g_scale_init, Npts_U, TaskType, NetProps, InpProps, MaxNewLinks, Psi, P_inp,\
+def Run_Full_Model(Na_init, Net_Init, alpha, g_scale_init, Npts_U, TaskType, NetProps, InpProps, MaxNewLinks, Psi, P_inp,\
     P_out, N_I, N_O, InpsNodes_init, OutsNodes_init, Spectral_radius, T, Delta_err, T_plot,\
     Transs, RC_Reps, Err_precision, Max_AddSteps, NodesDel_Percent, Informed_Growth, Delete_Nodes,\
-    InpNodeType, OutNodeType, Model_Reps, Scores_Names, SaveDir, SaveDataFlag, beta, DataDir):
+    InpNodeType, OutNodeType, Model_Reps, Scores_Names, SaveDir, SaveDataFlag, T_reservoir_state_save, beta, DataDir):
     
     ModelTyp = ModelType(Informed_Growth, Delete_Nodes)
     
     for Mr in range(Model_Reps):
 
         ###Step 1: load initial network from DataDir and generate inputs and outputs for the task
-        Net_Init = read_gpickle_compat(os.path.join(DataDir,'Net_Init_{:d}.gpickle'.format(Mr)))
+        Net_Init = read_gpickle_compat(os.path.join(SaveDir,'Net_Init_{:d}.gpickle'.format(Mr)))
         
         ###convert Net_Init to DiGraph if it is not already
         if not isinstance(Net_Init, nx.DiGraph):
@@ -434,15 +475,20 @@ def Run_Full_Model(Net_Init, alpha, g_scale_init, Npts_U, TaskType, NetProps, In
         else:
             Task.InpPlot(Inps, Outs, N_I)
 
-        AllGraphs, All_g_scales, NetMsrs, NetMsrs_Names, Scores_train, Scores_pred, AllInpsNodes, AllOutsNodes = Checkpoint_V3(Net_Init, alpha, g_scale_init, MaxNewLinks, Psi, P_inp,\
+        AllGraphs, All_g_scales, NetMsrs, NetMsrs_Names, Scores_train, Scores_pred, AllInpsNodes, AllOutsNodes, \
+        ResStates_4D_train_list, ResStates_4D_pred_list, W_outs_list = Checkpoint_V3(Net_Init, alpha, g_scale_init, MaxNewLinks, Psi, P_inp,\
         P_out, N_I, N_O, InpsNodes_init, OutsNodes_init, Spectral_radius, T, Delta_err, beta, T_plot, Inps, Outs, Inps_test,Outs_test,Transs,\
-        RC_Reps, Err_precision, Max_AddSteps, NodesDel_Percent, Informed_Growth, Delete_Nodes, InpNodeType, OutNodeType)
+        RC_Reps, Err_precision, Max_AddSteps, NodesDel_Percent, T_reservoir_state_save, SaveDataFlag , Informed_Growth, Delete_Nodes, InpNodeType, OutNodeType)
         Scores = np.array([Scores_train, Scores_pred])
         print('Completed Model Rep:', Mr)#, "completed, time elapsed:", (timer()-start)/60, 'mins')
         #### Save Data#######################################
         if(SaveDataFlag=="Yes"):
-            SaveData(SaveDir, TaskType, NetProps, InpProps, Mr, NetMsrs, NetMsrs_Names, Scores, AllGraphs, All_g_scales, AllInpsNodes, AllOutsNodes)
-        
+            SaveData(SaveDir, TaskType, Na_init, NetProps, InpProps, Mr, NetMsrs, NetMsrs_Names, Scores, AllGraphs, All_g_scales, AllInpsNodes, AllOutsNodes)
+            
+            ###defining a function to save the res states np.array of shape [tselected time, N, batch, Npts_U] as a gpickle file, as it can be too large to save as a numpy file and can cause memory error.
+            save_res_states_gpickle(ResStates_4D_train_list, W_outs_list, T_reservoir_state_save, SaveDir, TaskType, Na_init, Mr, Name='Train')
+            save_res_states_gpickle(ResStates_4D_pred_list, W_outs_list, T_reservoir_state_save, SaveDir, TaskType, Na_init, Mr, Name='Pred')
+
         #### Print resuts and plots#################################################
         print('\n################################################################')
         print('\nNetwork Evolution Model Type:',ModelTyp)
@@ -462,13 +508,17 @@ def Run_Full_Model(Net_Init, alpha, g_scale_init, Npts_U, TaskType, NetProps, In
 
         ##### Output from final Net.####################################
         print('\nClose-loop prediction final network:')
-        Outs_predict, Outs_test_pred, MSEs_train, MSEs_pred, W_outs_all, Winps_all = RC(AllGraphs[-1], Spectral_radius, alpha, All_g_scales[-1], N_I, N_O, AllInpsNodes[-1], AllOutsNodes[-1], Inps, Outs,\
+        Outs_predict, Outs_test_pred, MSEs_train, MSEs_pred, W_outs_all, Winps_all, ResStates_3D_train, ResStates_3D_test = RC(AllGraphs[-1], Spectral_radius, alpha, All_g_scales[-1], N_I, N_O, AllInpsNodes[-1], AllOutsNodes[-1], Inps, Outs,\
                                                                Inps_test, Outs_test, Transs, 1, beta=beta, Return=2)
         
         ###Save final best model separately             
         if(SaveDataFlag=="Yes"):
-            save_final_model(AllGraphs[-1], All_g_scales[-1], AllInpsNodes[-1], AllOutsNodes[-1], W_outs_all, Winps_all, Outs_test_pred, SaveDir, TaskType, Mr)
-            
+            save_final_model(AllGraphs[-1], All_g_scales[-1], AllInpsNodes[-1], AllOutsNodes[-1], W_outs_all, Winps_all, Outs_test_pred, SaveDir, TaskType, Na_init, Mr)
+            ##save the reservoir states of the final model as well
+            save_res_states_gpickle(ResStates_3D_train, W_outs_all, T_reservoir_state_save, SaveDir, TaskType, Na_init, Mr, Name='Final_Train')
+            save_res_states_gpickle(ResStates_3D_test, W_outs_all, T_reservoir_state_save, SaveDir, TaskType, Na_init, Mr, Name='Final_Pred')
+
+
         ##print Pred shape and MSEs
         print('Predicted test output shape:', Outs_predict.shape, 'Test Predicted output shape:', Outs_test_pred.shape)
         print('MSEs for train outputs:', MSEs_train)
@@ -482,14 +532,18 @@ def Run_Full_Model(Net_Init, alpha, g_scale_init, Npts_U, TaskType, NetProps, In
         Inps_predict, Outs_predict = Task.InpGenerate(TaskType, N_I, Npts_U, InpProps_pred)
 
         print('\nClose-loop prediction final network:')
-        Outs_predict_f, Outs_test_pred_f, MSEs_train_f, MSEs_pred_f, W_outs_all_f, Winps_all_f = \
+        Outs_predict_f, Outs_test_pred_f, MSEs_train_f, MSEs_pred_f, W_outs_all_f, Winps_all_f, ResStates_3D_train_f, ResStates_3D_test_f = \
             RC(AllGraphs[-1], Spectral_radius, alpha, All_g_scales[-1], N_I, N_O, AllInpsNodes[-1], AllOutsNodes[-1], Inps, Outs,\
                                                                Inps_predict, Outs_predict, Transs, 1, beta=beta, Return=2)
         
         ###Save final best model separately             
         if(SaveDataFlag=="Yes"):
-            save_final_model(AllGraphs[-1], All_g_scales[-1], AllInpsNodes[-1], AllOutsNodes[-1], W_outs_all_f, Winps_all_f, Outs_test_pred_f, SaveDir, TaskType, Mr, Name='Final_DiversePredictions')
-            
+            save_final_model(AllGraphs[-1], All_g_scales[-1], AllInpsNodes[-1], AllOutsNodes[-1], W_outs_all_f, Winps_all_f, Outs_test_pred_f, SaveDir, TaskType, Na_init, Mr, Name='Final_DiversePredictions')
+            ##save the reservoir states of the final model for the diverse predictions as well
+            save_res_states_gpickle(ResStates_3D_train_f, W_outs_all_f, T_reservoir_state_save, SaveDir, TaskType, Na_init, Mr, Name='Final_DiversePredictions_Train')
+            save_res_states_gpickle(ResStates_3D_test_f, W_outs_all_f, T_reservoir_state_save, SaveDir, TaskType, Na_init, Mr, Name='Final_DiversePredictions_Pred')
+
+
         ##print Pred shape and MSEs
         print('Final Predicted output shape:', Outs_predict_f.shape, 'Final Test Predicted output shape:', Outs_test_pred_f.shape)
         print('Final MSEs for train outputs:', MSEs_train_f)
